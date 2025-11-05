@@ -60,7 +60,10 @@ public class SecurityConfig {
         return new InMemoryUserDetailsManager(
                 User.withUsername("user1").password(passwordEncoder.encode("1234")).authorities("USER").build(),
                 User.withUsername("user2").password(passwordEncoder.encode("12345")).authorities("USER").build(),
-                User.withUsername("user3").password(passwordEncoder.encode("123456")).authorities("ADMIN").build()
+                User.withUsername("user3").password(passwordEncoder.encode("123456")).authorities("USER").build(),
+                User.withUsername("admin1").password(passwordEncoder.encode("1234")).authorities("ADMIN", "USER").build(),
+                User.withUsername("admin2").password(passwordEncoder.encode("12345")).authorities("ADMIN", "USER").build(),
+                User.withUsername("admin3").password(passwordEncoder.encode("123456")).authorities("ADMIN", "USER").build()
         );
 
     }
@@ -78,7 +81,6 @@ public class SecurityConfig {
                 .oauth2ResourceServer(OAuth2ResourceServerConfigurer::jwt)
                 .httpBasic(Customizer.withDefaults())
                 .build();
-
     }
 
     // encoder le
