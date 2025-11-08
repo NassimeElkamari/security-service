@@ -1,6 +1,5 @@
 package com.example.securityservice.web;
 
-
 import org.springframework.http.HttpStatus;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
@@ -9,6 +8,7 @@ import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.security.core.userdetails.UserDetailsService;
 import org.springframework.security.oauth2.jwt.*;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.time.Instant;
@@ -20,38 +20,37 @@ import java.util.stream.Collectors;
 @RestController
 public class API {
 
-    private AuthenticationManager authenticationManager;
-    private JwtEncoder jwtEncoder;
-    private JwtDecoder jwtDecoder;
-    UserDetailsService userDetailsService;
+    private final AuthenticationManager authenticationManager;
+    private final JwtEncoder jwtEncoder;
+    private final JwtDecoder jwtDecoder;
+    private final UserDetailsService userDetailsService;
 
-    public API(AuthenticationManager authenticationManager, JwtEncoder jwtEncoder , JwtDecoder jwtDecoder , UserDetailsService userDetailsService) {
+    public API(AuthenticationManager authenticationManager,
+               JwtEncoder jwtEncoder,
+               JwtDecoder jwtDecoder,
+               UserDetailsService userDetailsService) {
         this.authenticationManager = authenticationManager;
         this.jwtEncoder = jwtEncoder;
         this.jwtDecoder = jwtDecoder;
         this.userDetailsService = userDetailsService;
-
     }
 
     @PostMapping("/login")
-    Map<String , String> login(String username , String password){
+    public Map<String, String> login(@RequestParam String username,
+                                     @RequestParam String password) {
 
-
-
-        Map<String , String> ID_token = new HashMap<>();
-
+        Map<String, String> ID_token = new HashMap<>();
         Instant instant = Instant.now();
 
-        // verifier  l'authentification
         Authentication authenticate = authenticationManager.authenticate(
                 new UsernamePasswordAuthenticationToken(username, password)
         );
 
-        // get scope
-        String scope = authenticate.getAuthorities().stream().map(auth-> auth.getAuthority()).collect(Collectors.joining(" "));
+        String scope = authenticate.getAuthorities()
+                .stream()
+                .map(auth -> auth.getAuthority())
+                .collect(Collectors.joining(" "));
 
-        // creation des ID Token
-        //1 -Access token
         JwtClaimsSet jwtClaimsSet_access = JwtClaimsSet.builder()
                 .subject(authenticate.getName())
                 .issuer("Security-Service")
@@ -60,49 +59,43 @@ public class API {
                 .claim("scope", scope)
                 .build();
 
-        String Access_token = jwtEncoder.encode(JwtEncoderParameters.from(jwtClaimsSet_access)).getTokenValue();
+        String accessToken = jwtEncoder.encode(JwtEncoderParameters.from(jwtClaimsSet_access)).getTokenValue();
 
-
-        //2 -refrech token
-        JwtClaimsSet jwtClaimsSet_refrech = JwtClaimsSet.builder()
+        JwtClaimsSet jwtClaimsSet_refresh = JwtClaimsSet.builder()
                 .subject(authenticate.getName())
                 .issuer("Security-Service")
                 .issuedAt(instant)
                 .expiresAt(instant.plus(15, ChronoUnit.HOURS))
                 .build();
 
-        String Refrech_token = jwtEncoder.encode(JwtEncoderParameters.from(jwtClaimsSet_refrech)).getTokenValue();
+        String refreshToken = jwtEncoder.encode(JwtEncoderParameters.from(jwtClaimsSet_refresh)).getTokenValue();
 
-        ID_token.put("access_token", Access_token);
-        ID_token.put("refresh_token", Refrech_token);
+        ID_token.put("access_token", accessToken);
+        ID_token.put("refresh_token", refreshToken);
 
         return ID_token;
     }
 
     @PostMapping("/refresh")
-    public Map<String,String> refresh(String refresh_token){
-        Map<String , String> ID_token = new HashMap<>();
+    public Map<String, String> refresh(@RequestParam("refresh_token") String refresh_token) {
+        Map<String, String> ID_token = new HashMap<>();
         Instant instant = Instant.now();
 
-
-        if(refresh_token == null){
+        if (refresh_token == null) {
             ID_token.put("Error", "Refresh token is null" + HttpStatus.UNAUTHORIZED);
             return ID_token;
         }
 
-        // verifier signature
         Jwt decoded = jwtDecoder.decode(refresh_token);
-
         String username = decoded.getSubject();
 
         UserDetails userDetails = userDetailsService.loadUserByUsername(username);
-        // creation de l'access token
 
-        // get scope
-        String scope = userDetails.getAuthorities().stream().map(auth-> auth.getAuthority()).collect(Collectors.joining(" "));
+        String scope = userDetails.getAuthorities()
+                .stream()
+                .map(auth -> auth.getAuthority())
+                .collect(Collectors.joining(" "));
 
-        // creation des ID Token
-        //1 -Access token
         JwtClaimsSet jwtClaimsSet_access = JwtClaimsSet.builder()
                 .subject(userDetails.getUsername())
                 .issuer("Security-Service")
@@ -111,9 +104,9 @@ public class API {
                 .claim("scope", scope)
                 .build();
 
-        String Access_token = jwtEncoder.encode(JwtEncoderParameters.from(jwtClaimsSet_access)).getTokenValue();
+        String accessToken = jwtEncoder.encode(JwtEncoderParameters.from(jwtClaimsSet_access)).getTokenValue();
 
-        ID_token.put("access_token", Access_token);
+        ID_token.put("access_token", accessToken);
         ID_token.put("refresh_token", refresh_token);
 
         return ID_token;

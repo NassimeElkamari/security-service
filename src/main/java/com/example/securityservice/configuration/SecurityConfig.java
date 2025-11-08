@@ -1,12 +1,10 @@
 package com.example.securityservice.configuration;
 
-
-import com.nimbusds.jose.jwk.JWK;
-import com.nimbusds.jose.jwk.JWKSet;
-import com.nimbusds.jose.jwk.RSAKey;
-import com.nimbusds.jose.jwk.source.ImmutableJWKSet;
-import com.nimbusds.jose.jwk.source.JWKSource;
+import com.example.securityservice.services.CustomUserDetailsService;
+import com.nimbusds.jose.jwk.*;
+import com.nimbusds.jose.jwk.source.*;
 import com.nimbusds.jose.proc.SecurityContext;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.autoconfigure.security.oauth2.resource.OAuth2ResourceServerProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -18,82 +16,56 @@ import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.config.annotation.web.configurers.oauth2.server.resource.OAuth2ResourceServerConfigurer;
 import org.springframework.security.config.http.SessionCreationPolicy;
-import org.springframework.security.core.userdetails.User;
 import org.springframework.security.crypto.password.PasswordEncoder;
-import org.springframework.security.oauth2.jwt.JwtDecoder;
-import org.springframework.security.oauth2.jwt.JwtEncoder;
-import org.springframework.security.oauth2.jwt.NimbusJwtDecoder;
-import org.springframework.security.oauth2.jwt.NimbusJwtEncoder;
-import org.springframework.security.provisioning.InMemoryUserDetailsManager;
-import org.springframework.security.provisioning.UserDetailsManager;
+import org.springframework.security.oauth2.jwt.*;
 import org.springframework.security.web.SecurityFilterChain;
-
-import java.util.Arrays;
 
 @Configuration
 @EnableWebSecurity
 public class SecurityConfig {
 
-    private PasswordEncoder passwordEncoder;
-    private RsaKeys rsaKeys;
+    private final PasswordEncoder passwordEncoder;
+    private final RsaKeys rsaKeys;
+    private final CustomUserDetailsService customUserDetailsService;
 
-    public SecurityConfig(PasswordEncoder passwordEncoder, RsaKeys rsaKeys) {
+    @Autowired
+    public SecurityConfig(PasswordEncoder passwordEncoder, RsaKeys rsaKeys, CustomUserDetailsService customUserDetailsService) {
         this.passwordEncoder = passwordEncoder;
         this.rsaKeys = rsaKeys;
+        this.customUserDetailsService = customUserDetailsService;
     }
 
-    // Gestion de l'authentification avec spring security
     @Bean
-    public AuthenticationManager authenticationManager(UserDetailsManager userDetailsManager) {
-        DaoAuthenticationProvider daoAuthenticationProvider = new DaoAuthenticationProvider();
-        daoAuthenticationProvider.setUserDetailsService(userDetailsManager);
-        daoAuthenticationProvider.setPasswordEncoder(passwordEncoder);
-        return new ProviderManager(daoAuthenticationProvider);
-
+    public AuthenticationManager authenticationManager() {
+        DaoAuthenticationProvider daoAuthProvider = new DaoAuthenticationProvider();
+        daoAuthProvider.setUserDetailsService(customUserDetailsService);
+        daoAuthProvider.setPasswordEncoder(passwordEncoder);
+        return new ProviderManager(daoAuthProvider);
     }
 
-
-    // definit users au niveau de memoire
     @Bean
-    public UserDetailsManager userDetailsManager() {
-
-        return new InMemoryUserDetailsManager(
-                User.withUsername("user1").password(passwordEncoder.encode("1234")).authorities("USER").build(),
-                User.withUsername("user2").password(passwordEncoder.encode("12345")).authorities("USER").build(),
-                User.withUsername("user3").password(passwordEncoder.encode("123456")).authorities("USER").build(),
-                User.withUsername("admin1").password(passwordEncoder.encode("1234")).authorities("ADMIN", "USER").build(),
-                User.withUsername("admin2").password(passwordEncoder.encode("12345")).authorities("ADMIN", "USER").build(),
-                User.withUsername("admin3").password(passwordEncoder.encode("123456")).authorities("ADMIN", "USER").build()
-        );
-
-    }
-
-
-    @Bean
-    public SecurityFilterChain filterChain(HttpSecurity httpSecurity, OAuth2ResourceServerProperties oAuth2ResourceServerProperties) throws Exception {
-
-        return httpSecurity
-                .sessionManagement(sess ->sess.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+    public SecurityFilterChain filterChain(HttpSecurity http, OAuth2ResourceServerProperties oAuth2ResourceServerProperties) throws Exception {
+        return http
+                .sessionManagement(sess -> sess.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .csrf(csrf -> csrf.disable())
-                .authorizeRequests(auth -> auth.requestMatchers("/login").permitAll())
-                .authorizeRequests(auth -> auth.requestMatchers("/refresh").permitAll())
-                .authorizeRequests(auth -> auth.anyRequest().authenticated())
+                .authorizeHttpRequests(auth -> auth
+                        .requestMatchers("/login", "/refresh").permitAll()
+                        .anyRequest().authenticated()
+                )
                 .oauth2ResourceServer(OAuth2ResourceServerConfigurer::jwt)
                 .httpBasic(Customizer.withDefaults())
                 .build();
     }
 
-    // encoder le
     @Bean
     JwtEncoder jwtEncoder() {
-        JWK jwk = new RSAKey.Builder(rsaKeys.publicKey()).privateKey(rsaKeys.privateKey()).build();
+        JWK jwk = new RSAKey.Builder(rsaKeys.publicKey())
+                .privateKey(rsaKeys.privateKey())
+                .build();
         JWKSource<SecurityContext> jwkSource = new ImmutableJWKSet<>(new JWKSet(jwk));
         return new NimbusJwtEncoder(jwkSource);
     }
 
-
-
-    // decoder le token
     @Bean
     JwtDecoder jwtDecoder() {
         return NimbusJwtDecoder.withPublicKey(rsaKeys.publicKey()).build();
